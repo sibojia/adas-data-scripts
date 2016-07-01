@@ -2,7 +2,8 @@ import json,os,sys,cv2
 from util import *
 
 def color_hash(i):
-	return ((i*50)%205 + 50, (i*70)%205 + 50, (i*90)%205 + 50)
+	i += 1
+	return ((i*50)%205 + 50, (i*80)%205 + 50, (i*100)%205 + 50)
 
 def show(labelpath, imgroot, rects):
 	fmap=open(labelpath+'/GuidMapping.txt').readlines()

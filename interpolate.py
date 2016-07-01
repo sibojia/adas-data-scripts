@@ -20,7 +20,7 @@ def comp_overlay(r1, r2):
 
 def comp_similarity(r1, r2):
     center_dist = abs(r1[0]+r1[2]/2 - (r2[0]+r2[2]/2)) + abs(r1[1]+r1[3]/2 - (r2[1]+r2[3]/2))
-    center_dist_ratio = float(center_dist) / (r1[2] + r1[3] + r2[2] + r2[3]) * 4
+    center_dist_ratio = float(center_dist) / (r1[2] + r1[3] + r2[2] + r2[3]) * 4 * 1.5
     w_diff_ratio = max(float(r1[2])/r2[2], float(r2[2])/r1[2]) - 1
     h_diff_ratio = max(float(r1[3])/r2[3], float(r2[3])/r1[3]) - 1
     return 1.0 / (center_dist_ratio + w_diff_ratio + h_diff_ratio + 1)
@@ -33,10 +33,13 @@ def rect2tracklets(rects2d):
             rp2 = track[-2][1:]
             rp1 = track[-1][1:]
             x = float(target_frameid - track[-1][0]) / (track[-1][0] - track[-2][0])
+            if x > 2: x = 2
             new_center_x = (rp1[0]+rp1[2]/2)*(1+x)-(rp2[0]+rp2[2]/2)*x
             new_center_y = (rp1[1]+rp1[3]/2)*(1+x)-(rp2[1]+rp2[3]/2)*x
             new_w = rp1[2]*(1+x)-rp2[2]*x
             new_h = rp1[3]*(1+x)-rp2[3]*x
+            if new_h < 0: new_h = 1
+            if new_w < 0: new_w = 1
             new_rect = [int(new_center_x-new_w/2), int(new_center_y-new_h/2), int(new_w), int(new_h)]
             return new_rect
     def find_most_similar_rects(target_rect, rects):
