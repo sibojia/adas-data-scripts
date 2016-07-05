@@ -3,6 +3,13 @@ import scipy.interpolate
 import sys, os
 from util import *
 import show_rect_rawoutput
+import show_rect_rawoutput_video
+
+options = {'overlay-th': 0.0,
+    'similarity-th': 0.3,
+    'frame-count-min': 10,
+    'frame-interval-th': 25,
+    }
 
 def comp_overlay(r1, r2):
     x11 = r1[0]; x12 = r1[0] + r1[2]
@@ -19,6 +26,7 @@ def comp_overlay(r1, r2):
     return float(ai)/(a1+a2-ai)
 
 def comp_similarity(r1, r2):
+    if r1[2]<=0 or r1[3]<=0 or r2[2]<=0 or r2[3]<=0: return 0
     center_dist = abs(r1[0]+r1[2]/2 - (r2[0]+r2[2]/2)) + abs(r1[1]+r1[3]/2 - (r2[1]+r2[3]/2))
     center_dist_ratio = float(center_dist) / (r1[2] + r1[3] + r2[2] + r2[3]) * 4 * 1.5
     w_diff_ratio = max(float(r1[2])/r2[2], float(r2[2])/r1[2]) - 1
@@ -38,8 +46,8 @@ def rect2tracklets(rects2d):
             new_center_y = (rp1[1]+rp1[3]/2)*(1+x)-(rp2[1]+rp2[3]/2)*x
             new_w = rp1[2]*(1+x)-rp2[2]*x
             new_h = rp1[3]*(1+x)-rp2[3]*x
-            if new_h < 0: new_h = 1
-            if new_w < 0: new_w = 1
+            if new_h <= 0: new_h = 1
+            if new_w <= 0: new_w = 1
             new_rect = [int(new_center_x-new_w/2), int(new_center_y-new_h/2), int(new_w), int(new_h)]
             return new_rect
     def find_most_similar_rects(target_rect, rects):
@@ -52,11 +60,6 @@ def rect2tracklets(rects2d):
                 maxid = i
             i += 1
         return maxid, maxov
-    options = {'overlay-th': 0.0,
-        'similarity-th': 0.3,
-        'frame-count-min': 1,
-        'frame-interval-th': 20,
-        }
     tracks = [] # [[(track1)[id1, r1]..] ..]
     track_predicts = [] # [(track1)[rect_predict] ..]
     frame_id = 0
@@ -70,6 +73,8 @@ def rect2tracklets(rects2d):
             # print "NEIGHBER", neighber_rects
             # raw_input()
         for rectid, rect in enumerate(rects): # every rect
+            if rect[2] <= 0 or rect[3] <= 0:
+                continue
             searchid, ov = find_most_similar_rects(rect, neighber_rects)
             if searchid >= 0:
                 trackid = track_predicts.index(neighber_rects[searchid])
@@ -120,6 +125,13 @@ def interpolate_tracklets(tracks):
         new_tracks.append(new_track)
     return new_tracks
 
+def remove_short_tracklets(tracks):
+    new_tracks = []
+    for track in tracks:
+        if len(track) >= options['frame-count-min']:
+            new_tracks.append(track)
+    return new_tracks
+
 def main():
     if len(sys.argv) < 4:
         print "Usage: interpolate.py labelpath imgroot rawrects"
@@ -133,5 +145,22 @@ def main():
     show_rect_rawoutput.show(sys.argv[1], sys.argv[2], rects_withtrack)
     print len(tracks)
 
+def main_video():
+    if len(sys.argv) < 3:
+        print "Usage: interpolate.py videopath rawrects [output_rawrects]"
+        sys.exit(-1)
+    rects = read_raw_rects(sys.argv[2])
+    tracks = rect2tracklets(rects)
+    tracks = interpolate_tracklets(tracks)
+    tracks = remove_short_tracklets(tracks)
+    rects_withtrack = tracklets2rect(tracks)
+    # print rects_withtrack
+    # show_rect_rawoutput.show(sys.argv[1], sys.argv[2], rects)
+    if len(sys.argv) == 3:
+        show_rect_rawoutput_video.show(sys.argv[1], rects_withtrack)
+    else:
+        dump_raw_rects(sys.argv[3], rects_withtrack, True)
+    print len(tracks)
+
 if __name__ == '__main__':
-    main()
+    main_video()

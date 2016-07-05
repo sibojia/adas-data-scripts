@@ -5,6 +5,7 @@ labeldir = ARGV[0]
 data = {}
 Find.find("#{labeldir}/Label/").each do |path|
 	next if FileTest.directory?(path)
+	next if !path.include?'.info'
 	s = File.read(path.chomp)
 	j = JSON.parse(s)
 	if j['Rects']
@@ -26,6 +27,7 @@ File.open("#{labeldir}/GuidMapping.txt").readlines().map { |e|
 File.open(ARGV[1], 'w') do |f|
 	sorted.each do |item|
 		f.puts "#{item.size}"
-		item.each {|i| f.puts(i.map(&:to_i).join " ")}
+		item.each {|i| f.puts(i.map(&:to_i).join " ") }
+		# 9.times {f.puts "0"}
 	end
 end
