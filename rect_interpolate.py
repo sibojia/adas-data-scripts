@@ -9,6 +9,7 @@ options = {'overlay-th': 0.0,
     'similarity-th': 0.3,
     'frame-count-min': 10,
     'frame-interval-th': 25,
+    'smooth-window-size': 5
     }
 
 def comp_overlay(r1, r2):
@@ -132,17 +133,33 @@ def remove_short_tracklets(tracks):
             new_tracks.append(track)
     return new_tracks
 
+def smooth_tracklets_moving_average(tracks):
+    def running_mean(x, N):
+        cumsum = np.cumsum(np.insert(x, 0, np.repeat(x[0:1, :], N, axis = 0), axis = 0), axis = 0)
+        return (cumsum[N:] - cumsum[:-N]) / N
+    new_tracks = []
+    for track in tracks:
+        track_np = np.array(track)
+        new_track = running_mean(track_np, options['smooth-window-size'])
+        new_track = np.concatenate((track_np[:, 0:1], new_track[:, 1:]), axis = 1)
+        new_tracks.append(new_track.astype(np.int32).tolist())
+    return new_tracks
+
 def main():
     if len(sys.argv) < 4:
-        print "Usage: interpolate.py labelpath imgroot rawrects"
+        print "Usage: interpolate.py labelpath imgroot rawrects [output]"
         sys.exit(-1)
     rects = read_raw_rects(sys.argv[3])
     tracks = rect2tracklets(rects)
     tracks = interpolate_tracklets(tracks)
+    tracks = smooth_tracklets_moving_average(tracks)
     rects_withtrack = tracklets2rect(tracks)
     # print rects_withtrack
     # show_rect_rawoutput.show(sys.argv[1], sys.argv[2], rects)
-    show_rect_rawoutput.show(sys.argv[1], sys.argv[2], rects_withtrack)
+    if len(sys.argv) == 4:
+        show_rect_rawoutput.show(sys.argv[1], sys.argv[2], rects_withtrack)
+    else:
+        dump_raw_rects(sys.argv[4], rects_withtrack, True)
     print len(tracks)
 
 def main_video():
@@ -163,4 +180,4 @@ def main_video():
     print len(tracks)
 
 if __name__ == '__main__':
-    main_video()
+    main()
