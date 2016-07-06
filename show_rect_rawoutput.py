@@ -15,6 +15,7 @@ def show(labelpath, imgroot, rects):
 		for rect in rects[i]:
 			if len(rect) >= 5:
 				color = color_hash(rect[4])
+				cv2.putText(img, str(int(rect[4])), (int(rect[0]), int(rect[1]) - 5), cv2.FONT_HERSHEY_DUPLEX, 0.8, color)
 			else:
 				color = (100,255,100)
 			cv2.rectangle(img, (int(rect[0]), int(rect[1])), (int(rect[0]+rect[2]), int(rect[1]+rect[3])), color, 2)

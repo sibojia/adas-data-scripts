@@ -6,10 +6,11 @@ import show_rect_rawoutput
 import show_rect_rawoutput_video
 
 options = {'overlay-th': 0.0,
-    'similarity-th': 0.3,
+    'similarity-th': 0.4,
     'frame-count-min': 10,
-    'frame-interval-th': 25,
-    'smooth-window-size': 5
+    'frame-interval-th': 20,
+    'smooth-window-size-position': 2,
+    'smooth-window-size-size': 5
     }
 
 def comp_overlay(r1, r2):
@@ -45,6 +46,8 @@ def rect2tracklets(rects2d):
             if x > 2: x = 2
             new_center_x = (rp1[0]+rp1[2]/2)*(1+x)-(rp2[0]+rp2[2]/2)*x
             new_center_y = (rp1[1]+rp1[3]/2)*(1+x)-(rp2[1]+rp2[3]/2)*x
+            # make change in size smaller for prediction
+            x = x / 1.5
             new_w = rp1[2]*(1+x)-rp2[2]*x
             new_h = rp1[3]*(1+x)-rp2[3]*x
             if new_h <= 0: new_h = 1
@@ -140,8 +143,15 @@ def smooth_tracklets_moving_average(tracks):
     new_tracks = []
     for track in tracks:
         track_np = np.array(track)
-        new_track = running_mean(track_np, options['smooth-window-size'])
-        new_track = np.concatenate((track_np[:, 0:1], new_track[:, 1:]), axis = 1)
+        # This change position from left top to center
+        track_np[:, 1] = track_np[:, 1] + track_np[:, 3]/2
+        track_np[:, 2] = track_np[:, 2] + track_np[:, 4]/2
+        # Different average window for position and size
+        new_track_pos = running_mean(track_np[:, 1:3], options['smooth-window-size-position'])
+        new_track_size = running_mean(track_np[:, 3:], options['smooth-window-size-size'])
+        new_track_pos[:, 0] = new_track_pos[:, 0] - new_track_size[:, 0]/2
+        new_track_pos[:, 1] = new_track_pos[:, 1] - new_track_size[:, 1]/2
+        new_track = np.concatenate((track_np[:, 0:1], new_track_pos, new_track_size), axis = 1)
         new_tracks.append(new_track.astype(np.int32).tolist())
     return new_tracks
 
