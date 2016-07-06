@@ -6,11 +6,11 @@ import show_rect_rawoutput
 import show_rect_rawoutput_video
 
 options = {'overlay-th': 0.0,
-    'similarity-th': 0.4,
+    'similarity-th': 0.1,
     'frame-count-min': 10,
-    'frame-interval-th': 20,
-    'smooth-window-size-position': 2,
-    'smooth-window-size-size': 5
+    'frame-interval-th': 2,
+    'smooth-window-size-position': 3,
+    'smooth-window-size-size': 6
     }
 
 def comp_overlay(r1, r2):
@@ -30,12 +30,24 @@ def comp_overlay(r1, r2):
 def comp_similarity(r1, r2):
     if r1[2]<=0 or r1[3]<=0 or r2[2]<=0 or r2[3]<=0: return 0
     center_dist = abs(r1[0]+r1[2]/2 - (r2[0]+r2[2]/2)) + abs(r1[1]+r1[3]/2 - (r2[1]+r2[3]/2))
-    center_dist_ratio = float(center_dist) / (r1[2] + r1[3] + r2[2] + r2[3]) * 4 * 1.5
+    center_dist_ratio = float(center_dist) / (r1[2] + r1[3] + r2[2] + r2[3]) * 4 * 2
     w_diff_ratio = max(float(r1[2])/r2[2], float(r2[2])/r1[2]) - 1
     h_diff_ratio = max(float(r1[3])/r2[3], float(r2[3])/r1[3]) - 1
     return 1.0 / (center_dist_ratio + w_diff_ratio + h_diff_ratio + 1)
 
-def rect2tracklets(rects2d):
+def comp_color_similarity(img, r1, r2):
+    def comp_ave_bgr(image, rect):
+        s=rect[2]*rect[3]
+        return [image[rect[1]:(rect[1]+rect[3]), rect[0]:(rect[0]+rect[2]), i].sum()/float(s) for i in [0,1,2]]
+    def bgr2hue(b,g,r):
+        alpha=0.5*(2*r-g-b)
+        beta=1.732/2*(g-b)
+        return np.arctan2(beta, alpha)
+    h1 = bgr2hue(*comp_ave_bgr(img, r1))
+    h2 = bgr2hue(*comp_ave_bgr(img, r2))
+    return (np.pi - abs(h1-h2)) / np.pi
+
+def rect2tracklets(imgs, rects2d):
     def linear_extrapolate_rect(track, target_frameid):
         if len(track) == 1:
             return track[-1][1:]
@@ -47,16 +59,17 @@ def rect2tracklets(rects2d):
             new_center_x = (rp1[0]+rp1[2]/2)*(1+x)-(rp2[0]+rp2[2]/2)*x
             new_center_y = (rp1[1]+rp1[3]/2)*(1+x)-(rp2[1]+rp2[3]/2)*x
             # make change in size smaller for prediction
-            x = x / 1.5
+            x = x / 2
             new_w = rp1[2]*(1+x)-rp2[2]*x
             new_h = rp1[3]*(1+x)-rp2[3]*x
             if new_h <= 0: new_h = 1
             if new_w <= 0: new_w = 1
             new_rect = [int(new_center_x-new_w/2), int(new_center_y-new_h/2), int(new_w), int(new_h)]
             return new_rect
-    def find_most_similar_rects(target_rect, rects):
+    def find_most_similar_rects(img, target_rect, rects):
         maxid = -1; maxov = 0; i = 0
         for rect in rects:
+            # ov = comp_color_similarity(img, target_rect, rect) * 0.2 + comp_similarity(target_rect, rect)
             ov = comp_similarity(target_rect, rect)
             # ov = comp_overlay(track[-1][1:], rect)
             if ov > maxov:
@@ -68,6 +81,8 @@ def rect2tracklets(rects2d):
     track_predicts = [] # [(track1)[rect_predict] ..]
     frame_id = 0
     for rects in rects2d: # every frame
+        # img = imgs[frame_id]
+        img = None
         if len(rects) > 0:
             for i in xrange(len(tracks)):
                 track_predicts[i] = linear_extrapolate_rect(tracks[i], frame_id)
@@ -79,13 +94,13 @@ def rect2tracklets(rects2d):
         for rectid, rect in enumerate(rects): # every rect
             if rect[2] <= 0 or rect[3] <= 0:
                 continue
-            searchid, ov = find_most_similar_rects(rect, neighber_rects)
+            searchid, ov = find_most_similar_rects(img, rect, neighber_rects)
             if searchid >= 0:
                 trackid = track_predicts.index(neighber_rects[searchid])
             else:
                 trackid = -1
             if ov > options['similarity-th']:
-                maxrectid, ov = find_most_similar_rects(neighber_rects[searchid], rects)
+                maxrectid, ov = find_most_similar_rects(img, neighber_rects[searchid], rects)
                 if maxrectid == rectid:
                     tracks[trackid].append([frame_id] + rect) # append tracklet
                 else:
@@ -160,8 +175,10 @@ def main():
         print "Usage: interpolate.py labelpath imgroot rawrects [output]"
         sys.exit(-1)
     rects = read_raw_rects(sys.argv[3])
-    tracks = rect2tracklets(rects)
-    tracks = interpolate_tracklets(tracks)
+    # imgs = read_all_images(sys.argv[1], sys.argv[2])
+    imgs = []
+    tracks = rect2tracklets(imgs, rects)
+    # tracks = interpolate_tracklets(tracks)
     tracks = smooth_tracklets_moving_average(tracks)
     rects_withtrack = tracklets2rect(tracks)
     # print rects_withtrack
