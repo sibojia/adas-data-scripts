@@ -6,11 +6,11 @@ import show_rect_rawoutput
 import show_rect_rawoutput_video
 
 options = {'overlay-th': 0.0,
-    'similarity-th': 0.1,
+    'similarity-th': 0.2,
     'frame-count-min': 10,
-    'frame-interval-th': 2,
-    'smooth-window-size-position': 3,
-    'smooth-window-size-size': 6
+    'frame-interval-th': 25,
+    'smooth-window-size-position': 7,
+    'smooth-window-size-size': 11
     }
 
 def comp_overlay(r1, r2):
@@ -40,6 +40,7 @@ def comp_color_similarity(img, r1, r2):
         s=rect[2]*rect[3]
         return [image[rect[1]:(rect[1]+rect[3]), rect[0]:(rect[0]+rect[2]), i].sum()/float(s) for i in [0,1,2]]
     def bgr2hue(b,g,r):
+        # https://en.wikipedia.org/wiki/HSL_and_HSV
         alpha=0.5*(2*r-g-b)
         beta=1.732/2*(g-b)
         return np.arctan2(beta, alpha)
@@ -153,21 +154,45 @@ def remove_short_tracklets(tracks):
 
 def smooth_tracklets_moving_average(tracks):
     def running_mean(x, N):
-        cumsum = np.cumsum(np.insert(x, 0, np.repeat(x[0:1, :], N, axis = 0), axis = 0), axis = 0)
-        return (cumsum[N:] - cumsum[:-N]) / N
+        if N % 2 == 0: N += 1
+        if x.shape[0] <= 2:
+            return x
+        elif x.shape[0] <= N:
+            return running_mean(x, N-2)
+        cumsum = np.cumsum(np.insert(x, 0, 0, axis = 0), axis = 0)
+        x[(N-1)/2:-(N-1)/2] = (cumsum[N:] - cumsum[:-N]) / N
+        for i in range((N-1)/2):
+            x[i]=cumsum[i*2+1]/(i*2+1)
+            # if i!=0: x[-i]=(cumsum[-1] - cumsum[-(i*2+2)])/(i*2+1)
+        return x
     new_tracks = []
     for track in tracks:
         track_np = np.array(track)
+        new_track_size = running_mean(track_np[:, 3:], options['smooth-window-size-size'])
         # This change position from left top to center
         track_np[:, 1] = track_np[:, 1] + track_np[:, 3]/2
         track_np[:, 2] = track_np[:, 2] + track_np[:, 4]/2
         # Different average window for position and size
         new_track_pos = running_mean(track_np[:, 1:3], options['smooth-window-size-position'])
-        new_track_size = running_mean(track_np[:, 3:], options['smooth-window-size-size'])
         new_track_pos[:, 0] = new_track_pos[:, 0] - new_track_size[:, 0]/2
         new_track_pos[:, 1] = new_track_pos[:, 1] - new_track_size[:, 1]/2
         new_track = np.concatenate((track_np[:, 0:1], new_track_pos, new_track_size), axis = 1)
         new_tracks.append(new_track.astype(np.int32).tolist())
+    return new_tracks
+
+def smooth_tacklets_time_decay(tracks):
+    def time_decay(x, K):
+        memory_data = x[0,:]
+        for i in xrange(x.shape[0]):
+            x[i] = x[i] * K + memory_data * (1 - K)
+            memory_data = x[i]
+        return x
+    new_tracks = []
+    for track in tracks:
+        track_np = np.array(track)
+        track_np[:,1:3] = time_decay(track_np[:, 1:3], 0.8)
+        track_np[:,3:5] = time_decay(track_np[:, 3:5], 0.6)
+        new_tracks.append(track_np.astype(np.int32).tolist())
     return new_tracks
 
 def main():
@@ -178,7 +203,7 @@ def main():
     # imgs = read_all_images(sys.argv[1], sys.argv[2])
     imgs = []
     tracks = rect2tracklets(imgs, rects)
-    # tracks = interpolate_tracklets(tracks)
+    tracks = interpolate_tracklets(tracks)
     tracks = smooth_tracklets_moving_average(tracks)
     rects_withtrack = tracklets2rect(tracks)
     # print rects_withtrack
