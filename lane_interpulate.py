@@ -7,12 +7,14 @@ import threading
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.interpolate
 from util import *
+import show_lanes
 
-Y_LINSPACE = np.linspace(600, 1100, 50)
+Y_LINSPACE = np.linspace(600, 1080, 80)
 
 options = {'overlay-th': 0.0,
-    'distance-th': 500,
+    'distance-th': 2000,
     'frame-count-min': 10,
     'frame-interval-th': 10,
     'smooth-forget-rate': 0.17
@@ -23,9 +25,10 @@ def lines2tracklines(data):
         minid = -1
         mindis = 1e6
         i = 0
+        length = len(Y_LINSPACE)/2
         for l in lines:
-            s = sum([abs(x1-x2) for (x1,x2) in zip(line[20:], l[20:])])
-            s /= len(Y_LINSPACE)
+            s = sum([abs(x1-x2) for (x1,x2) in zip(line[length:], l[length:])])
+            s /= length
             if s < mindis:
                 minid = i
                 mindis = s
@@ -63,16 +66,72 @@ def lines2tracklines(data):
         frame_id += 1
     return tracks
 
+def lines2tracklines_naive(data):
+    tracks = []
+    previous_num = 0
+    previous_start = 0
+    frame_id = 0
+    for lines in data: # frame
+        lines_std = []
+        # print 'lines', lines
+        max_min_y = 0
+        y_ind = 0
+        for j in lines: # line
+            px = np.array(j[0])
+            py = np.array(j[1])
+            if py.min() > max_min_y:
+                max_min_y = py.min()
+                for y_ind in xrange(80):
+                    if Y_LINSPACE[y_ind] >= max_min_y: break
+            if len(j[0]) == 2:
+                z = np.polyfit(py, px, 1)
+            else:
+                z = np.polyfit(py, px, 3)
+            p1 = np.poly1d(z)
+            lines_std.append([frame_id, min(j[1]), max(j[1])] + p1(Y_LINSPACE).tolist())
+        # print 'std', lines_std
+        # print lines_std
+        if frame_id > 500:
+            lines_std.sort(key=lambda i:i[y_ind+10])
+        else:
+            lines_std.sort(key=lambda i:i[y_ind+5])
+
+        # print lines_std
+        # raw_input()
+        # print 'sort', lines_std
+        # raw_input()
+        if len(lines_std) == 0 or (len(tracks) > 0 and tracks[previous_start][-1][0] > (frame_id - options['frame-interval-th']) and len(lines_std) == previous_num):
+            keeptrack = True
+        else:
+            keeptrack = False
+            previous_start = len(tracks)
+            previous_num = len(lines_std)
+        for lineid, j in enumerate(lines_std):
+            if keeptrack:
+                tracks[lineid + previous_start].append(j)
+            else:
+                tracks.append([j])
+            # if (lineid + previous_start) >= len(tracks):
+        # print keeptrack, len(tracks), previous_start, previous_num
+        # raw_input()
+        frame_id += 1
+    return tracks
+
 def smooth_tracks(tracks):
     new_tracks = []
     forget_rate = options['smooth-forget-rate']
     for track in tracks:
         if len(track) > 2:
-            track_memory = track[0][3:]
+            track_memory = track[0][1:]
             for frame_id in xrange(len(track)):
                 for i in xrange(len(track_memory)):
-                    track[frame_id][i+3] = track[frame_id][i+3] * forget_rate + track_memory[i] * (1-forget_rate)
-                    track_memory[i] = track[frame_id][i+3]
+                    if i < 2:
+                        track[frame_id][i+1] = track[frame_id][i+1] * 0.02 + track_memory[i] * (1-0.02)
+                    elif frame_id < 1035:
+                        track[frame_id][i+1] = track[frame_id][i+1] * forget_rate + track_memory[i] * (1-forget_rate)
+                    else:
+                        track[frame_id][i+1] = track[frame_id][i+1] * 0.7 + track_memory[i] * 0.3
+                    track_memory[i] = track[frame_id][i+1]
         new_tracks.append(track)
     return new_tracks
 
@@ -82,9 +141,9 @@ def tracklines2lines(tracks):
         for t in track:
             starti = 0; endi = 0
             for i, y in enumerate(Y_LINSPACE):
-                if starti == 0 and y > t[1]:
+                if starti == 0 and y >= t[1]:
                     starti = i
-                if endi == 0 and y > t[2]:
+                if endi == 0 and y >= t[2]:
                     endi = i
                     break
             if linedict.has_key(t[0]):
@@ -104,59 +163,17 @@ def tracklines2lines(tracks):
             data.append([])
     return data
 
-def show_rawlines(data):
-    plt.gca().invert_yaxis()
-    for i in data: # frame
-        plt.gca().cla()
-        plt.gca().axis([0, 1920, 1080, 0])
-        for j in i: # line
-            # print j
-            # raw_input()
-            plt.plot(j[0], j[1], '.', color='blue')
-            px = np.array(j[0])
-            py = np.array(j[1])
-            if len(j[0]) == 2:
-                z = np.polyfit(py, px, 1)
-            else:
-                z = np.polyfit(py, px, 3)
-            p1 = np.poly1d(z)
-            xp = np.linspace(min(j[1]), max(j[1]), 100)
-            plt.plot(p1(xp), xp, '--')
-        plt.draw()
-        plt.pause(0.01)
-
-def show_std_lines(data):
-    plt.gca().invert_yaxis()
-    for i in data: # frame
-        plt.gca().cla()
-        plt.gca().axis([0, 1920, 1080, 0])
-        for j in i: # line
-            plt.plot(j[:-1], Y_LINSPACE, '.', color='blue')
-            # px = np.array(j[0])
-            # py = np.array(j[1])
-            # if len(j[0]) == 2:
-            #     z = np.polyfit(py, px, 1)
-            # else:
-            #     z = np.polyfit(py, px, 3)
-            # p1 = np.poly1d(z)
-            # xp = np.linspace(min(j[1]), max(j[1]), 100)
-            # plt.plot(p1(xp), xp, '--')
-        plt.draw()
-        plt.pause(0.01)
-
 def main():
     data = read_lanes(sys.argv[1])
-
-
-if __name__ == "__main__":
-    data = read_lanes(sys.argv[1])
-    # show_lines(data)
-    tracks = lines2tracklines(data)
+    # show_lanes.show_rawlines(data)
+    tracks = lines2tracklines_naive(data)
     tracks = smooth_tracks(tracks)
     # print tracks[0]
     # raw_input()
     data_back = tracklines2lines(tracks)
-    # show_rawlines(data_back)
+    # show_lanes.show_rawlines(data_back)
     print len(tracks)
-    dump_lanes("lane_stable.label", data_back)
-    # main()
+    dump_lanes("map_lane_stable.label", data_back)
+
+if __name__ == "__main__":
+    main()
