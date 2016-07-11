@@ -89,17 +89,9 @@ def lines2tracklines_naive(data):
                 z = np.polyfit(py, px, 3)
             p1 = np.poly1d(z)
             lines_std.append([frame_id, min(j[1]), max(j[1])] + p1(Y_LINSPACE).tolist())
-        # print 'std', lines_std
-        # print lines_std
-        if frame_id > 500:
-            lines_std.sort(key=lambda i:i[y_ind+10])
-        else:
-            lines_std.sort(key=lambda i:i[y_ind+5])
 
-        # print lines_std
-        # raw_input()
-        # print 'sort', lines_std
-        # raw_input()
+        lines_std.sort(key=lambda i:i[y_ind+5])
+
         if len(lines_std) == 0 or (len(tracks) > 0 and tracks[previous_start][-1][0] > (frame_id - options['frame-interval-th']) and len(lines_std) == previous_num):
             keeptrack = True
         else:
@@ -127,10 +119,8 @@ def smooth_tracks(tracks):
                 for i in xrange(len(track_memory)):
                     if i < 2:
                         track[frame_id][i+1] = track[frame_id][i+1] * 0.02 + track_memory[i] * (1-0.02)
-                    elif frame_id < 1035:
-                        track[frame_id][i+1] = track[frame_id][i+1] * forget_rate + track_memory[i] * (1-forget_rate)
                     else:
-                        track[frame_id][i+1] = track[frame_id][i+1] * 0.7 + track_memory[i] * 0.3
+                        track[frame_id][i+1] = track[frame_id][i+1] * forget_rate + track_memory[i] * (1-forget_rate)
                     track_memory[i] = track[frame_id][i+1]
         new_tracks.append(track)
     return new_tracks
