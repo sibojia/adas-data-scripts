@@ -48,6 +48,8 @@ def dump_lanes(fout, lines2d):
 	for lines in lines2d:
 		f.write("%d\n" % len(lines))
 		for line in lines:
+			if len(line[0]) == 0:
+				print lines
 			f.write(' '.join([str(i) for j in zip(line[0], line[1]) for i in j]) + '\n')
 	f.close()
 

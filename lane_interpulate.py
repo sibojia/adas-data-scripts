@@ -83,12 +83,30 @@ def lines2tracklines_naive(data):
                 max_min_y = py.min()
                 for y_ind in xrange(80):
                     if Y_LINSPACE[y_ind] >= max_min_y: break
-            if len(j[0]) == 2:
+            if py.max() - py.min() < 200:
                 z = np.polyfit(py, px, 1)
+                p1 = np.poly1d(z)
+                lines_std.append([frame_id, min(j[1]), max(j[1])] + p1(Y_LINSPACE).tolist())
+            # elif frame_id < 140 and px.max() < 1400:
+            #     z = np.polyfit(py, px, 8)
+            #     p1 = np.poly1d(z)
+            #     lines_std.append([frame_id, min(j[1]), max(j[1])] + p1(Y_LINSPACE).tolist())
+                # tosort = np.concatenate(py, px)
+                # np.sort(tosort)
+                # tck = scipy.interpolate.splrep(py, px, s=0)
+                # xnew = scipy.interpolate.splev(Y_LINSPACE, tck, der=0)
+                # lines_std.append([frame_id, min(j[1]), max(j[1])] + xnew.tolist())
             else:
                 z = np.polyfit(py, px, 3)
-            p1 = np.poly1d(z)
-            lines_std.append([frame_id, min(j[1]), max(j[1])] + p1(Y_LINSPACE).tolist())
+                p1 = np.poly1d(z)
+                lines_std.append([frame_id, min(j[1]), max(j[1])] + p1(Y_LINSPACE).tolist())
+
+        # print 'std', lines_std
+        # print lines_std
+        if frame_id > 500:
+            lines_std.sort(key=lambda i:i[y_ind+10])
+        else:
+            lines_std.sort(key=lambda i:i[y_ind+5])
 
         lines_std.sort(key=lambda i:i[y_ind+5])
 
@@ -112,15 +130,17 @@ def lines2tracklines_naive(data):
 def smooth_tracks(tracks):
     new_tracks = []
     forget_rate = options['smooth-forget-rate']
-    for track in tracks:
-        if len(track) > 2:
+    for track_id, track in enumerate(tracks):
+        if len(track) > 2: # and track_id <= 5:
             track_memory = track[0][1:]
             for frame_id in xrange(len(track)):
                 for i in xrange(len(track_memory)):
                     if i < 2:
                         track[frame_id][i+1] = track[frame_id][i+1] * 0.02 + track_memory[i] * (1-0.02)
-                    else:
+                    elif track[frame_id][0] < 1035 or track[frame_id][0] > 1170:
                         track[frame_id][i+1] = track[frame_id][i+1] * forget_rate + track_memory[i] * (1-forget_rate)
+                    else:
+                        track[frame_id][i+1] = track[frame_id][i+1]
                     track_memory[i] = track[frame_id][i+1]
         new_tracks.append(track)
     return new_tracks
@@ -133,9 +153,11 @@ def tracklines2lines(tracks):
             for i, y in enumerate(Y_LINSPACE):
                 if starti == 0 and y >= t[1]:
                     starti = i
-                if endi == 0 and y >= t[2]:
-                    endi = i
+                if endi == 0 and y > t[2]:
+                    endi = i + 10
                     break
+            if endi == 0: endi = len(Y_LINSPACE)
+            if endi > len(Y_LINSPACE): endi = len(Y_LINSPACE)
             if linedict.has_key(t[0]):
                 linedict[t[0]].append([t[starti + 3: endi + 3], Y_LINSPACE[starti: endi].tolist(), tid])
             else:
@@ -163,7 +185,7 @@ def main():
     data_back = tracklines2lines(tracks)
     # show_lanes.show_rawlines(data_back)
     print len(tracks)
-    dump_lanes("map_lane_stable.label", data_back)
+    dump_lanes(sys.argv[2], data_back)
 
 if __name__ == "__main__":
     main()
